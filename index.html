@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Image Convert</title>
+    <meta
+      name="description"
+      content="Convert multiple images to JPEG, PNG, or WebP directly in your browser."
+    >
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="toolbar" aria-labelledby="app-title">
+        <div>
+          <h1 id="app-title">Image Convert</h1>
+          <p class="subtitle">Local browser conversion for PNG, JPG, JPEG, and TIFF files.</p>
+        </div>
+
+        <div class="controls" aria-label="Conversion settings">
+          <label class="control-field" for="format">
+            <span>Output</span>
+            <select id="format" name="format">
+              <option value="image/jpeg" selected>JPEG</option>
+              <option value="image/png">PNG</option>
+              <option value="image/webp">WebP</option>
+            </select>
+          </label>
+
+          <fieldset class="quality-group">
+            <legend>Compression</legend>
+            <label>
+              <input type="radio" name="quality" value="low">
+              <span>Low</span>
+            </label>
+            <label>
+              <input type="radio" name="quality" value="medium" checked>
+              <span>Medium</span>
+            </label>
+            <label>
+              <input type="radio" name="quality" value="high">
+              <span>High</span>
+            </label>
+            <label>
+              <input type="radio" name="quality" value="ultra">
+              <span>Ultra high</span>
+            </label>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="drop-zone" id="drop-zone">
+        <input
+          id="file-input"
+          type="file"
+          accept=".png,.jpg,.jpeg,.tif,.tiff,image/png,image/jpeg,image/tiff"
+          multiple
+        >
+        <label for="file-input">
+          <strong>Drop images here</strong>
+          <span>or choose files up to 10 MB each</span>
+        </label>
+      </section>
+
+      <section class="queue-panel" aria-labelledby="queue-title">
+        <div class="queue-header">
+          <h2 id="queue-title">Queue</h2>
+          <div class="queue-actions">
+            <button id="convert-all" type="button">Convert all</button>
+            <button id="download-all" class="secondary" type="button">Download all</button>
+            <button id="clear-finished" class="secondary" type="button">Clear finished</button>
+          </div>
+        </div>
+        <div id="queue-list" class="queue-list" aria-live="polite">
+          <p class="empty-state">No images added yet.</p>
+        </div>
+      </section>
+    </main>
+
+    <template id="queue-item-template">
+      <article class="queue-item">
+        <button class="thumb" type="button" disabled aria-label="Preview image"></button>
+        <div class="item-main">
+          <div class="item-title-row">
+            <h3></h3>
+            <span class="status-pill"></span>
+          </div>
+          <dl class="meta"></dl>
+          <p class="message"></p>
+          <div class="progress" aria-hidden="true"><span></span></div>
+        </div>
+        <div class="item-actions">
+          <button class="convert-one" type="button">Convert</button>
+          <a class="download secondary" hidden>Download</a>
+          <button class="remove secondary" type="button">Remove</button>
+        </div>
+      </article>
+    </template>
+
+    <dialog id="preview-dialog" class="preview-dialog" aria-labelledby="preview-title">
+      <div class="preview-shell">
+        <div class="preview-header">
+          <div>
+            <h2 id="preview-title">Preview</h2>
+            <p id="preview-meta"></p>
+          </div>
+          <button id="preview-close" class="secondary icon-button" type="button" aria-label="Close preview">
+            x
+          </button>
+        </div>
+        <div class="preview-stage">
+          <button id="preview-prev" class="secondary nav-button" type="button" aria-label="Previous image">
+            &lt;
+          </button>
+          <img id="preview-image" alt="">
+          <button id="preview-next" class="secondary nav-button" type="button" aria-label="Next image">
+            &gt;
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
