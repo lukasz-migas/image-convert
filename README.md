@@ -13,9 +13,6 @@ Image Convert is a small static web tool for converting multiple images in the b
 - Thumbnail preview with previous and next image navigation.
 - Basic protection against compression bombs with decode timeout and decoded pixel limits.
 
-## GitHub Pages
-
-Enable GitHub Pages for the repository and serve from the repository root. The app entry point is `index.html`.
 
 ## TIFF Support
 
