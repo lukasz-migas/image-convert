@@ -5,13 +5,12 @@ Image Convert is a small static web tool for converting multiple images in the b
 ## Features
 
 - Multiple image upload with drag and drop.
-- Queue-based conversion.
-- Output format selector for JPEG, PNG, and WebP.
+- Input validation for PNG, JPG, JPEG, TIF, and TIFF files.
 - Compression presets for low, medium, high, and ultra high compression.
 - Download all converted images as one ZIP archive.
-- Thumbnail preview with previous and next image navigation.
-- Input validation for PNG, JPG, JPEG, TIF, and TIFF files.
+- Several output formats: JPEG, PNG, and WebP.
 - 10 MB per-file limit.
+- Thumbnail preview with previous and next image navigation.
 - Basic protection against compression bombs with decode timeout and decoded pixel limits.
 
 ## GitHub Pages
@@ -20,4 +19,6 @@ Enable GitHub Pages for the repository and serve from the repository root. The a
 
 ## TIFF Support
 
-TIFF files are accepted, but browser support varies. Files convert only when the user's browser can decode TIFF images natively. Adding a TIFF decoder would require a production dependency.
+TIFF files are accepted, but browser support varies. Files convert only when the user's browser can natively decode TIFF images.
+
+[Available online](https://lukasz-migas.github.io/image-convert/)
