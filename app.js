@@ -51,7 +51,7 @@ const queueList = document.querySelector("#queue-list");
 const formatSelect = document.querySelector("#format");
 const convertAllButton = document.querySelector("#convert-all");
 const downloadAllButton = document.querySelector("#download-all");
-const clearFinishedButton = document.querySelector("#clear-finished");
+const clearQueueButton = document.querySelector("#clear-queue");
 const previewDialog = document.querySelector("#preview-dialog");
 const previewImage = document.querySelector("#preview-image");
 const previewTitle = document.querySelector("#preview-title");
@@ -68,7 +68,7 @@ if (
   !(formatSelect instanceof HTMLSelectElement) ||
   !(convertAllButton instanceof HTMLButtonElement) ||
   !(downloadAllButton instanceof HTMLButtonElement) ||
-  !(clearFinishedButton instanceof HTMLButtonElement) ||
+  !(clearQueueButton instanceof HTMLButtonElement) ||
   !(previewDialog instanceof HTMLDialogElement) ||
   !(previewImage instanceof HTMLImageElement) ||
   !(previewTitle instanceof HTMLElement) ||
@@ -88,6 +88,9 @@ fileInput.addEventListener("change", () => {
 
 dropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
   dropZone.classList.add("is-dragging");
 });
 
@@ -96,35 +99,47 @@ dropZone.addEventListener("dragleave", () => {
 });
 
 dropZone.addEventListener("drop", (event) => {
-  event.preventDefault();
   dropZone.classList.remove("is-dragging");
-  addFiles(event.dataTransfer?.files ?? null);
 });
 
-document.addEventListener("dragover", (event) => {
-  if (!hasDraggedFiles(event)) {
+document.addEventListener("dragenter", (event) => {
+  if (!isFileDrag(event)) {
     return;
   }
 
   event.preventDefault();
   dropZone.classList.add("is-dragging");
-});
+}, true);
+
+document.addEventListener("dragover", (event) => {
+  if (!isFileDrag(event)) {
+    return;
+  }
+
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
+  dropZone.classList.add("is-dragging");
+}, true);
 
 document.addEventListener("dragleave", (event) => {
   if (event.relatedTarget === null) {
     dropZone.classList.remove("is-dragging");
   }
-});
+}, true);
 
 document.addEventListener("drop", (event) => {
-  if (!hasDraggedFiles(event)) {
+  const files = getDroppedFiles(event);
+  if (!files.length && !isFileDrag(event)) {
     return;
   }
 
   event.preventDefault();
+  event.stopPropagation();
   dropZone.classList.remove("is-dragging");
-  addFiles(event.dataTransfer?.files ?? null);
-});
+  addFiles(files);
+}, true);
 
 convertAllButton.addEventListener("click", async () => {
   convertAllButton.disabled = true;
@@ -140,13 +155,8 @@ downloadAllButton.addEventListener("click", async () => {
   await downloadAllConverted();
 });
 
-clearFinishedButton.addEventListener("click", () => {
-  const removableIds = queue
-    .filter((item) => item.status === "done" || item.status === "error")
-    .map((item) => item.id);
-  for (const id of removableIds) {
-    removeItem(id);
-  }
+clearQueueButton.addEventListener("click", () => {
+  clearQueue();
 });
 
 previewCloseButton.addEventListener("click", () => {
@@ -200,13 +210,28 @@ function addFiles(files) {
 }
 
 /**
- * Determine whether a drag event contains files.
+ * Get files from a drop event.
+ *
+ * @param {DragEvent} event Drag event to inspect.
+ * @returns {File[]} Dropped files.
+ */
+function getDroppedFiles(event) {
+  return Array.from(event.dataTransfer?.files ?? []);
+}
+
+/**
+ * Determine whether a drag event appears to contain files.
  *
  * @param {DragEvent} event Drag event to inspect.
  * @returns {boolean} True when files are being dragged.
  */
-function hasDraggedFiles(event) {
-  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+function isFileDrag(event) {
+  const files = event.dataTransfer?.files;
+  if (files?.length) {
+    return true;
+  }
+
+  return Array.from(event.dataTransfer?.types ?? []).some((type) => type.toLowerCase() === "files");
 }
 
 /**
@@ -549,6 +574,23 @@ function removeItem(id) {
 }
 
 /**
+ * Clear all items from the queue and release object URLs.
+ *
+ * @returns {void}
+ */
+function clearQueue() {
+  closePreview();
+
+  for (const item of queue) {
+    clearPreview(item);
+    clearDownload(item);
+  }
+
+  queue.splice(0, queue.length);
+  renderQueue();
+}
+
+/**
  * Update a queue item status and message.
  *
  * @param {QueueItem} item Item to update.
@@ -709,10 +751,9 @@ function closeDecodedSource(source) {
 function updateActionStates() {
   const hasConvertibleItems = queue.some((item) => canConvertItem(item));
   const hasDownloadableItems = queue.some((item) => item.outputBlob && item.outputName);
-  const hasFinishedItems = queue.some((item) => item.status === "done" || item.status === "error");
   convertAllButton.disabled = !hasConvertibleItems;
   downloadAllButton.disabled = !hasDownloadableItems;
-  clearFinishedButton.disabled = !hasFinishedItems;
+  clearQueueButton.disabled = queue.length === 0;
 }
 
 /**
