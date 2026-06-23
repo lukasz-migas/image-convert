@@ -58,7 +58,7 @@ button:hover,
 button:not(:disabled):focus-visible,
 .download:focus-visible,
 select:focus-visible,
-.quality-group input:focus-visible + span {
+.preview-toggle input:focus-visible + span {
   outline: 3px solid rgba(31, 122, 100, 0.28);
   outline-offset: 2px;
 }
@@ -145,51 +145,52 @@ select {
   padding: 0 36px 0 12px;
 }
 
-.quality-group {
-  display: flex;
-  align-items: end;
-  gap: 6px;
-  min-width: 0;
-  border: 0;
-  padding: 0;
-  margin: 0;
-}
-
-.quality-group legend {
-  float: left;
-  width: 100%;
-  margin-bottom: 6px;
+.preview-toggle {
+  align-self: end;
+  position: relative;
   color: var(--muted);
   font-size: 13px;
 }
 
-.quality-group label {
-  position: relative;
-}
-
-.quality-group input {
+.preview-toggle input {
   position: absolute;
   inset: 0;
   opacity: 0;
 }
 
-.quality-group span {
+.preview-toggle span {
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   padding: 0 12px;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.quality-group input:checked + span {
+.preview-toggle span::before {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #aab4ad;
+  border-radius: 4px;
+  content: "";
+}
+
+.preview-toggle input:checked + span {
   border-color: var(--accent);
   background: #e5f4ef;
   color: var(--accent-strong);
+}
+
+.preview-toggle input:checked + span::before {
+  border-color: var(--accent);
+  background:
+    linear-gradient(135deg, transparent 0 45%, #ffffff 45% 55%, transparent 55%),
+    linear-gradient(45deg, transparent 0 42%, #ffffff 42% 54%, transparent 54%),
+    var(--accent);
 }
 
 .drop-zone {
@@ -248,6 +249,59 @@ select {
   gap: 16px;
   padding: 18px;
   border-bottom: 1px solid var(--line);
+}
+
+.queue-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfb;
+}
+
+.queue-summary[hidden] {
+  display: none;
+}
+
+.queue-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 14px 18px;
+}
+
+.queue-summary div + div {
+  border-left: 1px solid var(--line);
+}
+
+.queue-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.queue-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 17px;
+}
+
+.global-progress {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfb;
+}
+
+.global-progress[hidden] {
+  display: none;
+}
+
+.global-progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .queue-actions,
@@ -517,20 +571,20 @@ select {
     flex-direction: column;
   }
 
-  .quality-group {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .quality-group legend {
-    grid-column: 1 / -1;
-  }
-
-  .quality-group span,
+  .preview-toggle span,
   button,
   .download,
   select {
     width: 100%;
+  }
+
+  .queue-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .queue-summary div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .thumb {

@@ -8,6 +8,7 @@
       name="description"
       content="Convert multiple images to JPEG, PNG, or WebP directly in your browser."
     >
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -28,25 +29,20 @@
             </select>
           </label>
 
-          <fieldset class="quality-group">
-            <legend>Compression</legend>
-            <label>
-              <input type="radio" name="quality" value="low">
-              <span>Low</span>
-            </label>
-            <label>
-              <input type="radio" name="quality" value="medium" checked>
-              <span>Medium</span>
-            </label>
-            <label>
-              <input type="radio" name="quality" value="high">
-              <span>High</span>
-            </label>
-            <label>
-              <input type="radio" name="quality" value="ultra">
-              <span>Ultra high</span>
-            </label>
-          </fieldset>
+          <label class="control-field" for="quality">
+            <span>Compression</span>
+            <select id="quality" name="quality">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="ultra">Ultra high</option>
+            </select>
+          </label>
+
+          <label class="preview-toggle">
+            <input id="preview-toggle" type="checkbox" checked>
+            <span>Preview thumbnails</span>
+          </label>
         </div>
       </section>
 
@@ -70,6 +66,29 @@
             <button id="convert-all" type="button">Convert all</button>
             <button id="download-all" class="secondary" type="button">Download all</button>
             <button id="clear-queue" class="secondary" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="queue-summary" class="queue-summary" hidden>
+          <div>
+            <span>Total input</span>
+            <strong id="summary-input">0 B</strong>
+          </div>
+          <div>
+            <span>Total output</span>
+            <strong id="summary-output">0 B</strong>
+          </div>
+          <div>
+            <span>Saving</span>
+            <strong id="summary-saving">0 B (0%)</strong>
+          </div>
+        </div>
+        <div id="global-progress" class="global-progress" hidden>
+          <div class="global-progress-row">
+            <span>Converting images</span>
+            <span id="global-progress-text">0 of 0 processed</span>
+          </div>
+          <div class="progress" role="progressbar" aria-label="Overall conversion progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span id="global-progress-bar"></span>
           </div>
         </div>
         <div id="queue-list" class="queue-list" aria-live="polite">

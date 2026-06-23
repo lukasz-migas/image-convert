@@ -23,6 +23,7 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 50_000_000;
 const MAX_CANVAS_SIDE = 16_384;
 const DECODE_TIMEOUT_MS = 12_000;
+const MAX_CONCURRENT_CONVERSIONS = 4;
 const ACCEPTED_EXTENSIONS = new Set(["png", "jpg", "jpeg", "tif", "tiff"]);
 const ACCEPTED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/tiff", "image/tif"]);
 const QUALITY_PRESETS = {
@@ -41,17 +42,46 @@ const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_VERSION = 20;
 
+/**
+ * @typedef {object} ConversionTask
+ * @property {string} id Queue item id to convert.
+ * @property {boolean} tracksBulkProgress Whether this task counts toward the active bulk progress snapshot.
+ */
+
+/**
+ * @typedef {object} BulkProgress
+ * @property {number} total Number of queued tasks in the active bulk snapshot.
+ * @property {number} completed Number of tasks that have finished or been skipped.
+ */
+
 /** @type {QueueItem[]} */
 const queue = [];
+/** @type {ConversionTask[]} */
+const pendingConversions = [];
+/** @type {Set<string>} */
+const pendingConversionIds = new Set();
+/** @type {BulkProgress | null} */
+let bulkProgress = null;
+let bulkProgressHideTimer = 0;
+let activeConversionCount = 0;
 let activePreviewId = null;
 
 const dropZone = document.querySelector("#drop-zone");
 const fileInput = document.querySelector("#file-input");
 const queueList = document.querySelector("#queue-list");
 const formatSelect = document.querySelector("#format");
+const qualitySelect = document.querySelector("#quality");
+const previewToggle = document.querySelector("#preview-toggle");
 const convertAllButton = document.querySelector("#convert-all");
 const downloadAllButton = document.querySelector("#download-all");
 const clearQueueButton = document.querySelector("#clear-queue");
+const queueSummary = document.querySelector("#queue-summary");
+const summaryInput = document.querySelector("#summary-input");
+const summaryOutput = document.querySelector("#summary-output");
+const summarySaving = document.querySelector("#summary-saving");
+const globalProgress = document.querySelector("#global-progress");
+const globalProgressText = document.querySelector("#global-progress-text");
+const globalProgressBar = document.querySelector("#global-progress-bar");
 const previewDialog = document.querySelector("#preview-dialog");
 const previewImage = document.querySelector("#preview-image");
 const previewTitle = document.querySelector("#preview-title");
@@ -66,9 +96,18 @@ if (
   !(fileInput instanceof HTMLInputElement) ||
   !(queueList instanceof HTMLElement) ||
   !(formatSelect instanceof HTMLSelectElement) ||
+  !(qualitySelect instanceof HTMLSelectElement) ||
+  !(previewToggle instanceof HTMLInputElement) ||
   !(convertAllButton instanceof HTMLButtonElement) ||
   !(downloadAllButton instanceof HTMLButtonElement) ||
   !(clearQueueButton instanceof HTMLButtonElement) ||
+  !(queueSummary instanceof HTMLElement) ||
+  !(summaryInput instanceof HTMLElement) ||
+  !(summaryOutput instanceof HTMLElement) ||
+  !(summarySaving instanceof HTMLElement) ||
+  !(globalProgress instanceof HTMLElement) ||
+  !(globalProgressText instanceof HTMLElement) ||
+  !(globalProgressBar instanceof HTMLElement) ||
   !(previewDialog instanceof HTMLDialogElement) ||
   !(previewImage instanceof HTMLImageElement) ||
   !(previewTitle instanceof HTMLElement) ||
@@ -141,14 +180,12 @@ document.addEventListener("drop", (event) => {
   addFiles(files);
 }, true);
 
-convertAllButton.addEventListener("click", async () => {
-  convertAllButton.disabled = true;
-  for (const item of queue) {
-    if (canConvertItem(item)) {
-      await convertItem(item.id);
-    }
-  }
-  convertAllButton.disabled = false;
+previewToggle.addEventListener("change", () => {
+  setPreviewEnabled(previewToggle.checked);
+});
+
+convertAllButton.addEventListener("click", () => {
+  startBulkConversion();
 });
 
 downloadAllButton.addEventListener("click", async () => {
@@ -277,12 +314,98 @@ function validateQueuedItem(item) {
     return;
   }
 
-  item.previewUrl = URL.createObjectURL(item.file);
+  ensurePreview(item);
   setItemStatus(item, "ready", "Ready to convert.");
 }
 
 /**
- * Convert every eligible image in the queue.
+ * Start a bulk conversion run from the current eligible queue items.
+ *
+ * @returns {void}
+ */
+function startBulkConversion() {
+  const items = queue.filter((item) => canScheduleConversion(item));
+  if (!items.length) {
+    return;
+  }
+
+  startBulkProgress(items.length);
+  for (const item of items) {
+    scheduleConversion(item.id, true, false);
+  }
+
+  runScheduledConversions();
+  renderQueue();
+}
+
+/**
+ * Add one item to the shared conversion scheduler.
+ *
+ * @param {string} id Queue item id.
+ * @param {boolean} tracksBulkProgress Whether this task counts toward the active bulk progress snapshot.
+ * @param {boolean} runNow Whether to start eligible pending tasks immediately.
+ * @returns {boolean} True when the item was scheduled.
+ */
+function scheduleConversion(id, tracksBulkProgress = false, runNow = true) {
+  const item = queue.find((candidate) => candidate.id === id);
+  if (!item || !canScheduleConversion(item)) {
+    return false;
+  }
+
+  pendingConversions.push({ id, tracksBulkProgress });
+  pendingConversionIds.add(id);
+
+  if (runNow) {
+    runScheduledConversions();
+    renderQueue();
+  }
+
+  return true;
+}
+
+/**
+ * Start pending conversion tasks until the concurrency limit is reached.
+ *
+ * @returns {void}
+ */
+function runScheduledConversions() {
+  while (activeConversionCount < MAX_CONCURRENT_CONVERSIONS && pendingConversions.length) {
+    const task = pendingConversions.shift();
+    if (!task) {
+      return;
+    }
+
+    pendingConversionIds.delete(task.id);
+    const item = queue.find((candidate) => candidate.id === task.id);
+    if (!item || !canConvertItem(item)) {
+      completeBulkTask(task);
+      continue;
+    }
+
+    activeConversionCount += 1;
+    void runConversionTask(task);
+  }
+}
+
+/**
+ * Run one scheduled conversion and continue the queue afterward.
+ *
+ * @param {ConversionTask} task Task to run.
+ * @returns {Promise<void>} Resolves when the task lifecycle completes.
+ */
+async function runConversionTask(task) {
+  try {
+    await convertItem(task.id);
+  } finally {
+    activeConversionCount -= 1;
+    completeBulkTask(task);
+    runScheduledConversions();
+    updateActionStates();
+  }
+}
+
+/**
+ * Convert one eligible image in the queue.
  *
  * @param {string} id Queue item id.
  * @returns {Promise<void>} Resolves when conversion finishes or fails.
@@ -302,15 +425,22 @@ async function convertItem(id) {
   try {
     const decoded = await decodeFile(item.file);
     decodedSource = decoded.source;
+    if (!queue.includes(item)) {
+      return;
+    }
+
     item.width = decoded.width;
     item.height = decoded.height;
-    item.previewUrl = item.previewUrl ?? URL.createObjectURL(item.file);
+    ensurePreview(item);
 
     assertSafeDimensions(decoded.width, decoded.height);
     setItemStatus(item, "working", "Converting image.");
     renderQueue();
 
     const blob = await encodeImage(decodedSource);
+    if (!queue.includes(item)) {
+      return;
+    }
 
     item.outputBlob = blob;
     item.downloadUrl = URL.createObjectURL(blob);
@@ -326,6 +456,122 @@ async function convertItem(id) {
   }
 
   renderQueue();
+}
+
+/**
+ * Check whether thumbnail previews are enabled.
+ *
+ * @returns {boolean} True when preview object URLs should be created.
+ */
+function isPreviewEnabled() {
+  return previewToggle.checked;
+}
+
+/**
+ * Enable or disable thumbnail previews for all queue items.
+ *
+ * @param {boolean} enabled Whether previews should be available.
+ * @returns {void}
+ */
+function setPreviewEnabled(enabled) {
+  previewToggle.checked = enabled;
+
+  if (!enabled) {
+    closePreview();
+    for (const item of queue) {
+      clearPreview(item);
+    }
+    renderQueue();
+    return;
+  }
+
+  for (const item of queue) {
+    ensurePreview(item);
+  }
+  renderQueue();
+}
+
+/**
+ * Create a preview URL for a valid item when previews are enabled.
+ *
+ * @param {QueueItem} item Queue item that may need a preview URL.
+ * @returns {void}
+ */
+function ensurePreview(item) {
+  if (!isPreviewEnabled() || item.previewUrl || item.status === "error") {
+    return;
+  }
+
+  item.previewUrl = URL.createObjectURL(item.file);
+}
+
+/**
+ * Start tracking progress for a bulk conversion snapshot.
+ *
+ * @param {number} total Number of tasks in the snapshot.
+ * @returns {void}
+ */
+function startBulkProgress(total) {
+  window.clearTimeout(bulkProgressHideTimer);
+  bulkProgress = { total, completed: 0 };
+  updateBulkProgress();
+}
+
+/**
+ * Count one scheduled bulk task as complete.
+ *
+ * @param {ConversionTask} task Finished or skipped task.
+ * @returns {void}
+ */
+function completeBulkTask(task) {
+  if (!task.tracksBulkProgress || !bulkProgress) {
+    return;
+  }
+
+  bulkProgress.completed = Math.min(bulkProgress.completed + 1, bulkProgress.total);
+  updateBulkProgress();
+
+  if (bulkProgress.completed >= bulkProgress.total) {
+    bulkProgressHideTimer = window.setTimeout(() => {
+      clearBulkProgress();
+    }, 800);
+  }
+}
+
+/**
+ * Render the active bulk progress state.
+ *
+ * @returns {void}
+ */
+function updateBulkProgress() {
+  if (!bulkProgress) {
+    globalProgress.hidden = true;
+    globalProgressBar.style.width = "0%";
+    globalProgressText.textContent = "0 of 0 processed";
+    globalProgressBar.parentElement?.setAttribute("aria-valuenow", "0");
+    return;
+  }
+
+  const percent = bulkProgress.total > 0
+    ? Math.round((bulkProgress.completed / bulkProgress.total) * 100)
+    : 0;
+
+  globalProgress.hidden = false;
+  globalProgressBar.style.width = `${percent}%`;
+  globalProgressText.textContent = `${bulkProgress.completed} of ${bulkProgress.total} processed`;
+  globalProgressBar.parentElement?.setAttribute("aria-valuenow", String(percent));
+}
+
+/**
+ * Hide and reset the global bulk progress UI.
+ *
+ * @returns {void}
+ */
+function clearBulkProgress() {
+  window.clearTimeout(bulkProgressHideTimer);
+  bulkProgress = null;
+  updateBulkProgress();
+  updateActionStates();
 }
 
 /**
@@ -439,6 +685,7 @@ function renderQueue() {
     empty.className = "empty-state";
     empty.textContent = "No images added yet.";
     queueList.append(empty);
+    updateQueueSummary();
     updateActionStates();
     return;
   }
@@ -447,7 +694,35 @@ function renderQueue() {
     queueList.append(renderQueueItem(item));
   }
 
+  updateQueueSummary();
   updateActionStates();
+}
+
+/**
+ * Refresh aggregate input, output, and saving totals for the queue.
+ *
+ * @returns {void}
+ */
+function updateQueueSummary() {
+  if (!queue.length) {
+    queueSummary.hidden = true;
+    summaryInput.textContent = "0 B";
+    summaryOutput.textContent = "0 B";
+    summarySaving.textContent = "0 B (0%)";
+    return;
+  }
+
+  const totalInput = queue.reduce((sum, item) => sum + item.file.size, 0);
+  const convertedItems = queue.filter((item) => item.outputSize !== null);
+  const convertedInput = convertedItems.reduce((sum, item) => sum + item.file.size, 0);
+  const totalOutput = convertedItems.reduce((sum, item) => sum + (item.outputSize ?? 0), 0);
+  const saving = convertedInput - totalOutput;
+  const savingPercent = convertedInput > 0 ? (saving / convertedInput) * 100 : 0;
+
+  queueSummary.hidden = false;
+  summaryInput.textContent = formatBytes(totalInput);
+  summaryOutput.textContent = formatBytes(totalOutput);
+  summarySaving.textContent = `${formatSignedBytes(saving)} (${formatPercent(savingPercent)})`;
 }
 
 /**
@@ -503,9 +778,9 @@ function renderQueueItem(item) {
     });
   }
 
-  convertButton.disabled = !canConvertItem(item);
+  convertButton.disabled = !canScheduleConversion(item);
   convertButton.addEventListener("click", () => {
-    void convertItem(item.id);
+    scheduleConversion(item.id);
   });
 
   if (item.downloadUrl && item.outputName) {
@@ -580,6 +855,9 @@ function removeItem(id) {
  */
 function clearQueue() {
   closePreview();
+  clearBulkProgress();
+  pendingConversions.splice(0, pendingConversions.length);
+  pendingConversionIds.clear();
 
   for (const item of queue) {
     clearPreview(item);
@@ -609,11 +887,7 @@ function setItemStatus(item, status, message) {
  * @returns {number} Canvas quality value.
  */
 function getQuality() {
-  const selected = document.querySelector('input[name="quality"]:checked');
-  if (!(selected instanceof HTMLInputElement)) {
-    return QUALITY_PRESETS.medium;
-  }
-  return QUALITY_PRESETS[selected.value] ?? QUALITY_PRESETS.medium;
+  return QUALITY_PRESETS[qualitySelect.value] ?? QUALITY_PRESETS.medium;
 }
 
 /**
@@ -668,6 +942,36 @@ function formatBytes(bytes) {
   }
 
   return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+/**
+ * Format a signed byte delta for savings or size increases.
+ *
+ * @param {number} bytes Byte delta to format.
+ * @returns {string} Human-readable signed size.
+ */
+function formatSignedBytes(bytes) {
+  if (bytes === 0) {
+    return "0 B";
+  }
+
+  const sign = bytes < 0 ? "-" : "";
+  return `${sign}${formatBytes(Math.abs(bytes))}`;
+}
+
+/**
+ * Format a percentage without unnecessary trailing decimals.
+ *
+ * @param {number} percent Percentage value.
+ * @returns {string} Human-readable percentage.
+ */
+function formatPercent(percent) {
+  if (percent === 0) {
+    return "0%";
+  }
+
+  const value = Math.abs(percent) >= 10 ? percent.toFixed(1) : percent.toFixed(2);
+  return `${Number(value)}%`;
 }
 
 /**
@@ -749,11 +1053,30 @@ function closeDecodedSource(source) {
  * @returns {void}
  */
 function updateActionStates() {
-  const hasConvertibleItems = queue.some((item) => canConvertItem(item));
+  const hasConvertibleItems = queue.some((item) => canScheduleConversion(item));
   const hasDownloadableItems = queue.some((item) => item.outputBlob && item.outputName);
-  convertAllButton.disabled = !hasConvertibleItems;
+  convertAllButton.disabled = !hasConvertibleItems || isBulkConversionActive();
   downloadAllButton.disabled = !hasDownloadableItems;
   clearQueueButton.disabled = queue.length === 0;
+}
+
+/**
+ * Decide whether a bulk conversion snapshot is currently running.
+ *
+ * @returns {boolean} True when bulk progress is active and incomplete.
+ */
+function isBulkConversionActive() {
+  return Boolean(bulkProgress && bulkProgress.completed < bulkProgress.total);
+}
+
+/**
+ * Decide whether a queue item can be scheduled for conversion now.
+ *
+ * @param {QueueItem} item Queue item to inspect.
+ * @returns {boolean} True when the item is eligible and not already pending.
+ */
+function canScheduleConversion(item) {
+  return canConvertItem(item) && !pendingConversionIds.has(item.id);
 }
 
 /**

@@ -5,12 +5,13 @@ Image Convert is a small static web tool for converting multiple images in the b
 ## Features
 
 - Multiple image upload with drag and drop.
+- Convert up to 4 images at the same time with global batch progress.
 - Input validation for PNG, JPG, JPEG, TIF, and TIFF files.
 - Compression presets for low, medium, high, and ultra high compression.
 - Download all converted images as one ZIP archive.
 - Several output formats: JPEG, PNG, and WebP.
 - 10 MB per-file limit.
-- Thumbnail preview with previous and next image navigation.
+- Optional thumbnail preview with previous and next image navigation.
 - Basic protection against compression bombs with decode timeout and decoded pixel limits.
 
 
