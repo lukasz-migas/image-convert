@@ -19,7 +19,7 @@
  * @property {string} message User-facing status detail.
  */
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 50_000_000;
 const MAX_CANVAS_SIDE = 16_384;
 const DECODE_TIMEOUT_MS = 12_000;
@@ -310,7 +310,7 @@ function validateQueuedItem(item) {
   }
 
   if (item.file.size > MAX_FILE_BYTES) {
-    setItemStatus(item, "error", "File exceeds the 10 MB limit.");
+    setItemStatus(item, "error", "File exceeds the 20 MB limit.");
     return;
   }
 

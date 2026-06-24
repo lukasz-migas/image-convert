@@ -10,7 +10,7 @@ Image Convert is a small static web tool for converting multiple images in the b
 - Compression presets for low, medium, high, and ultra high compression.
 - Download all converted images as one ZIP archive.
 - Several output formats: JPEG, PNG, and WebP.
-- 10 MB per-file limit.
+- 20 MB per-file limit.
 - Optional thumbnail preview with previous and next image navigation.
 - Basic protection against compression bombs with decode timeout and decoded pixel limits.
 
